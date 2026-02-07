@@ -217,7 +217,7 @@ def batchnorm_forward(x, gamma, beta, bn_param):
         x_mean = np.mean(x, axis=0)
         x_var = np.var(x, axis=0)
         x_normed = (x - x_mean) / (x_var + eps)**0.5
-        out = gamma * x_normed + beta
+        out = gamma * x_normed + beta # we multiply  every sample in x with the same gamma and beta
         cache = x, x_mean, x_var, x_normed, gamma
         
         running_mean = momentum * running_mean + (1 - momentum) * x_mean
@@ -274,6 +274,7 @@ def batchnorm_backward(dout, cache):
     # might prove to be helpful.                                              #
     ###########################################################################
 
+    dbeta = dout.sum(axis=0)
     x, x_mean, x_var, x_normed, gamma = cache
 
 
