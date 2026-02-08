@@ -216,9 +216,10 @@ def batchnorm_forward(x, gamma, beta, bn_param):
 
         x_mean = np.mean(x, axis=0)
         x_var = np.var(x, axis=0)
-        x_normed = (x - x_mean) / (x_var + eps)**0.5
+        x_std = (x_var + eps)**0.5
+        x_normed = (x - x_mean) / x_std
         out = gamma * x_normed + beta # we multiply  every sample in x with the same gamma and beta
-        cache = x, x_mean, x_var, x_normed, gamma
+        cache = x, x_mean, x_var, x_std, x_normed, gamma
         
         running_mean = momentum * running_mean + (1 - momentum) * x_mean
         running_var = momentum * running_var + (1 - momentum) * x_var
@@ -273,10 +274,26 @@ def batchnorm_backward(dout, cache):
     # Referencing the original paper (https://arxiv.org/abs/1502.03167)       #
     # might prove to be helpful.                                              #
     ###########################################################################
-    x, x_mean, x_var, x_normed, gamma = cache
+    x, x_mean, x_var, x_std, x_normed, gamma = cache
+    N, D = x.shape
 
     dbeta = dout.sum(axis=0)
     dgamma = np.sum(dout * x_normed, axis=0)
+
+    # dx computation
+
+    # dx_normed computation
+    dx_normed = dout * gamma  # from every part of the computation
+
+    # dvar computation
+    dvar = np.sum(x - x_mean, axis=0) * dx_normed * (x - x_mean) / (N * x_std ** 3)
+
+    # dmean computation
+    dmean =
+
+
+    # total dx
+    dx = dx_normed / x_std + dmean - dvar
 
 
     ###########################################################################
