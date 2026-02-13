@@ -1,3 +1,4 @@
+# from setuptools import setup # i used it in pycharm
 from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Build import cythonize
