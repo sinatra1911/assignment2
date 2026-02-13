@@ -251,9 +251,9 @@ class FullyConnectedNet(object):
                 elif self.normalization == "layernorm":
                     dout, dgamma, dbeta = layernorm_backward(dout, norm_cache)
 
-                    if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
-                        grads[f'gamma{l + 1}'] = dgamma
-                        grads[f'beta{l + 1}'] = dbeta
+                if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
+                    grads[f'gamma{l + 1}'] = dgamma
+                    grads[f'beta{l + 1}'] = dbeta
 
             # using only normalization
             elif self.normalization:
@@ -266,9 +266,9 @@ class FullyConnectedNet(object):
                 elif self.normalization == "layernorm":
                     dout, dgamma, dbeta = layernorm_backward(dout, norm_cache)
 
-                    if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
-                        grads[f'gamma{l + 1}'] = dgamma
-                        grads[f'beta{l + 1}'] = dbeta
+                if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
+                    grads[f'gamma{l + 1}'] = dgamma
+                    grads[f'beta{l + 1}'] = dbeta
 
             # for only dropout cases
             elif self.use_dropout:
