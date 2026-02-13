@@ -161,33 +161,35 @@ class FullyConnectedNet(object):
             W = self.params[f'W{l + 1}']
             b = self.params[f'b{l + 1}']
 
-            affine_out, affine_cache = affine_forward(out, W, b)
+            # affine step
+            out, affine_cache = affine_forward(out, W, b)
+            current_layer_cache = [affine_cache]
 
-            # layer of affine, normalization, relu
+            # normalization step
             if self.normalization:
+
+                gamma = self.params[f'gamma{l + 1}']
+                beta = self.params[f'beta{l + 1}']
+
                 if self.normalization == "batchnorm":
-                    gamma = self.params[f'gamma{l + 1}']
-                    beta = self.params[f'beta{l + 1}']
-                    bn_out, bn_cache = batchnorm_forward(affine_out, gamma, beta, self.bn_params[l])
-                    out, relu_cache = relu_forward(bn_out)
+                    out, norm_cache = batchnorm_forward(out, gamma, beta, self.bn_params[l])
 
-                    # store caches
-                    caches.append((affine_cache, bn_cache, relu_cache))
+                elif self.normalization == "layernorm":
+                    out, norm_cache = layernorm_forward(out, gamma, beta, self.bn_params[l])
 
-                if self.normalization == "layernorm":
-                    gamma = self.params[f'gamma{l + 1}']
-                    beta = self.params[f'beta{l + 1}']
-                    ln_out, ln_cache = layernorm_forward(affine_out, gamma, beta, self.bn_params[l])
-                    out, relu_cache = relu_forward(ln_out)
+                current_layer_cache.append(norm_cache)
 
-                    # store caches
-                    caches.append((affine_cache, ln_cache, relu_cache))
+            # relu step
+            out, relu_cache = relu_forward(out)
+            current_layer_cache.append(relu_cache)
 
-            else:
+            # dropout step
+            if self.use_dropout:
+                out, dropout_cache = dropout_forward(out, self.dropout_param)
+                current_layer_cache.append(dropout_cache)
 
-                # for case without batch normalization
-                out, relu_cache = relu_forward(affine_out)
-                caches.append((affine_cache, relu_cache))
+            # saving the caches as a tuple
+            caches.append(tuple(current_layer_cache))
 
         # final layer
         W = self.params[f'W{self.num_layers}']
@@ -227,7 +229,7 @@ class FullyConnectedNet(object):
         loss += 0.5 * self.reg * np.sum([np.sum(W ** 2) for k, W in self.params.items() if "W" in k])
 
         # starting the backward loop with only the last layer
-        d_out3, dW, db = affine_backward(dloss, caches[self.num_layers - 1])
+        dout, dW, db = affine_backward(dloss, caches[self.num_layers - 1])
 
         # get them in the gradients dictionary
         grads[f'W{self.num_layers}'] = dW + self.reg * self.params[f'W{self.num_layers}']
@@ -236,42 +238,52 @@ class FullyConnectedNet(object):
         # for the rest of the layers
         for l in range(self.num_layers - 2, -1, -1):
 
-            # for case of using normalization
-            if self.normalization:
+            # now we need to chack how many parameters there is in any loop so we need to check what was used before
+            # using dropout and normalization
+            if self.normalization and self.use_dropout:
+
+                affine_cache, norm_cache, relu_cache, dropout_cache = caches[l]
+                dout = dropout_backward(dout, dropout_cache)
+                dout = relu_backward(dout, relu_cache)
+
                 if self.normalization == "batchnorm":
-
-                    # unpack the tuple we created in the forward pass
-                    affine_cache, bn_cache, relu_cache = caches[l]
-
-                    # backprop relu, bn and then affine
-                    d_out1 = relu_backward(d_out3, relu_cache)
-                    d_out2, dgamma, dbeta = batchnorm_backward(d_out1, bn_cache)
-                    d_out3, dW, db = affine_backward(d_out2, affine_cache)
+                    dout, dgamma, dbeta = batchnorm_backward(dout, norm_cache)
+                elif self.normalization == "layernorm":
+                    dout, dgamma, dbeta = layernorm_backward(dout, norm_cache)
 
                     if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
                         grads[f'gamma{l + 1}'] = dgamma
                         grads[f'beta{l + 1}'] = dbeta
 
-                if self.normalization == "layernorm":
+            # using only normalization
+            elif self.normalization:
 
-                    # unpack the tuple we created in the forward pass
-                    affine_cache, ln_cache, relu_cache = caches[l]
+                affine_cache, norm_cache, relu_cache = caches[l]
+                dout = relu_backward(dout, relu_cache)
 
-                    # backprop relu, bn and then affine
-                    d_out1 = relu_backward(d_out3, relu_cache)
-                    d_out2, dgamma, dbeta = layernorm_backward(d_out1, ln_cache)
-                    d_out3, dW, db = affine_backward(d_out2, affine_cache)
+                if self.normalization == "batchnorm":
+                    dout, dgamma, dbeta = batchnorm_backward(dout, norm_cache)
+                elif self.normalization == "layernorm":
+                    dout, dgamma, dbeta = layernorm_backward(dout, norm_cache)
 
                     if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
                         grads[f'gamma{l + 1}'] = dgamma
                         grads[f'beta{l + 1}'] = dbeta
+
+            # for only dropout cases
+            elif self.use_dropout:
+
+                affine_cache, relu_cache, dropout_cache = caches[l]
+                dout = dropout_backward(dout, dropout_cache)
+                dout = relu_backward(dout, relu_cache)
 
             else:
 
-                # for the case of no bn
                 affine_cache, relu_cache = caches[l]
-                d_out = relu_backward(d_out3, relu_cache)
-                d_out3, dW, db = affine_backward(d_out, affine_cache)
+                dout = relu_backward(dout, relu_cache)
+
+            # the affine loop in the end happens in all cases
+            dout, dW, db = affine_backward(dout, affine_cache)
 
             grads[f'W{l + 1}'] = dW + self.reg * self.params[f'W{l + 1}']
             grads[f'b{l + 1}'] = db
