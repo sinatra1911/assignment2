@@ -163,15 +163,25 @@ class FullyConnectedNet(object):
 
             affine_out, affine_cache = affine_forward(out, W, b)
 
-            # layer of affine, batch normalization, relu
-            if self.normalization == "batchnorm":
-                gamma = self.params[f'gamma{l + 1}']
-                beta = self.params[f'beta{l + 1}']
-                bn_out, bn_cache = batchnorm_forward(affine_out, gamma, beta, self.bn_params[l])
-                out, relu_cache = relu_forward(bn_out)
+            # layer of affine, normalization, relu
+            if self.normalization:
+                if self.normalization == "batchnorm":
+                    gamma = self.params[f'gamma{l + 1}']
+                    beta = self.params[f'beta{l + 1}']
+                    bn_out, bn_cache = batchnorm_forward(affine_out, gamma, beta, self.bn_params[l])
+                    out, relu_cache = relu_forward(bn_out)
 
-                # store caches
-                caches.append((affine_cache, bn_cache, relu_cache))
+                    # store caches
+                    caches.append((affine_cache, bn_cache, relu_cache))
+
+                if self.normalization == "layernorm":
+                    gamma = self.params[f'gamma{l + 1}']
+                    beta = self.params[f'beta{l + 1}']
+                    ln_out, ln_cache = layernorm_forward(affine_out, gamma, beta, self.bn_params[l])
+                    out, relu_cache = relu_forward(ln_out)
+
+                    # store caches
+                    caches.append((affine_cache, ln_cache, relu_cache))
 
             else:
 
@@ -226,20 +236,35 @@ class FullyConnectedNet(object):
         # for the rest of the layers
         for l in range(self.num_layers - 2, -1, -1):
 
-            # for case of using batch normalization
-            if self.normalization == "batchnorm":
+            # for case of using normalization
+            if self.normalization:
+                if self.normalization == "batchnorm":
 
-                # unpack the tuple we created in the forward pass
-                affine_cache, bn_cache, relu_cache = caches[l]
+                    # unpack the tuple we created in the forward pass
+                    affine_cache, bn_cache, relu_cache = caches[l]
 
-                # backprop relu, bn and then affine
-                d_out1 = relu_backward(d_out3, relu_cache)
-                d_out2, dgamma, dbeta = batchnorm_backward(d_out1, bn_cache)
-                d_out3, dW, db = affine_backward(d_out2, affine_cache)
+                    # backprop relu, bn and then affine
+                    d_out1 = relu_backward(d_out3, relu_cache)
+                    d_out2, dgamma, dbeta = batchnorm_backward(d_out1, bn_cache)
+                    d_out3, dW, db = affine_backward(d_out2, affine_cache)
 
-                if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
-                    grads[f'gamma{l + 1}'] = dgamma
-                    grads[f'beta{l + 1}'] = dbeta
+                    if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
+                        grads[f'gamma{l + 1}'] = dgamma
+                        grads[f'beta{l + 1}'] = dbeta
+
+                if self.normalization == "layernorm":
+
+                    # unpack the tuple we created in the forward pass
+                    affine_cache, ln_cache, relu_cache = caches[l]
+
+                    # backprop relu, bn and then affine
+                    d_out1 = relu_backward(d_out3, relu_cache)
+                    d_out2, dgamma, dbeta = layernorm_backward(d_out1, ln_cache)
+                    d_out3, dW, db = affine_backward(d_out2, affine_cache)
+
+                    if dgamma is not None and l < self.num_layers - 1:  # to avoid edge case like in initialization
+                        grads[f'gamma{l + 1}'] = dgamma
+                        grads[f'beta{l + 1}'] = dbeta
 
             else:
 
@@ -247,7 +272,6 @@ class FullyConnectedNet(object):
                 affine_cache, relu_cache = caches[l]
                 d_out = relu_backward(d_out3, relu_cache)
                 d_out3, dW, db = affine_backward(d_out, affine_cache)
-
 
             grads[f'W{l + 1}'] = dW + self.reg * self.params[f'W{l + 1}']
             grads[f'b{l + 1}'] = db
