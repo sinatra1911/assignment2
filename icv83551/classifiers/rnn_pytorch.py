@@ -138,7 +138,13 @@ class CaptioningRNN:
         #                                                                          #
         # You also don't have to implement the backward pass.                      #
         ############################################################################
-        # 
+
+        h0 = affine_forward(features, W_proj, b_proj)
+        x = word_embedding_forward(captions_in, W_embed)
+        h = rnn_forward(x, h0, Wx, Wh, b)
+        out = temporal_affine_forward(h, W_vocab, b_vocab)
+        loss = temporal_softmax_loss(out, captions_out, mask)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -202,7 +208,38 @@ class CaptioningRNN:
         # NOTE: we are still working over minibatches in this function. Also if   #
         # you are using an LSTM, initialize the first cell state to zeros.        #
         ###########################################################################
-        # 
+
+        # 0. Initialize the hidden state (h0) by projecting image features
+        # features shape: (N, D_img), W_proj shape: (D_img, H)
+        h = features.mm(W_proj) + b_proj
+
+        # Start with the <START> token for the entire batch
+        # shape: (N,)
+        current_word_idx = torch.full((N,), self._start, dtype=torch.long)
+
+        for t in range(max_length):
+            # (1) Embed the current word
+            # W_embed shape: (V, D), x shape: (N, D)
+            x = W_embed[current_word_idx]
+
+            # (2) Make an RNN step
+            # h shape: (N, H)
+            h = rnn_step_forward(x, h, Wx, Wh, b)
+
+            # (3) Apply the learned affine transformation to get scores for the vocabulary
+            # W_vocab shape: (H, V), scores shape: (N, V)
+            scores = affine_forward(h, W_vocab, b_vocab)
+
+            # (4) Select the word with the highest score (greedy decoding)
+            # torch.max returns (values, indices)
+            _, next_word_idx = torch.max(scores, dim=1)
+
+            # Record the result
+            captions[:, t] = next_word_idx
+
+            # Update current_word_idx to be the input for the next time step
+            current_word_idx = next_word_idx
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
